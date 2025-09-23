@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>가상 조이스틱</title>
+    <style>
+        .joystick-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            border: 2px solid #ccc;
+            border-radius: 50%;
+            margin-top: 50px;
+            touch-action: none; /* 모바일에서 터치 스크롤 방지 */
+        }
+        .joystick-handle {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: #337ab7;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+<body>
+    <h1>가상 조이스틱</h1>
+    <button onclick="sendCmd(1.0, 0.0)">앞으로</button>
+    <button onclick="sendCmd(-1.0, 0.0)">뒤로</button>
+    <button onclick="sendCmd(0.0, 1.0)">왼쪽</button>
+    <button onclick="sendCmd(0.0, -1.0)">오른쪽</button>
+
+    <div class="joystick-container" id="joystick-container">
+        <div class="joystick-handle" id="joystick-handle"></div>
+    </div>
+
+    <script>
+        // 1. WebSocket 연결 설정
+        let ws;
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            // ⚠️ FastAPI 서버의 WS 엔드포인트로 연결합니다.
+            ws = new WebSocket("ws://127.0.0.1:8000/ws/cmd");
+
+            ws.onopen = () => console.log("WebSocket 연결 성공");
+            ws.onclose = () => console.log("WebSocket 연결 종료");
+            ws.onerror = (error) => console.error("WebSocket 에러:", error);
+            ws.onmessage = (event) => console.log("서버로부터 메시지:", event.data);
+        }
+        
+        connectWebSocket();
+
+        // 2. 기존 버튼 클릭 함수
+        function sendCmd(vx, wz) {
+        console.log(`버튼 클릭: vx=${vx}, wz=${wz}`);
+        
+        fetch('http://127.0.0.1:8000/cmd', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vx, wz }),
+        })
+        .then(response => response.json())
+        .then(data => console.log('Fetch 성공:', data))
+        .catch(error => console.error('Fetch 에러:', error));
+    }
+
+
+        // 3. 조이스틱 로직 (마우스/터치 이벤트 처리)
+        const joystickContainer = document.getElementById("joystick-container");
+        const joystickHandle = document.getElementById("joystick-handle");
+        const containerRect = joystickContainer.getBoundingClientRect();
+        const centerX = containerRect.width / 2;
+        const centerY = containerRect.height / 2;
+        let isDragging = false;
+
+        joystickHandle.addEventListener('mousedown', startDrag);
+        joystickHandle.addEventListener('touchstart', startDrag);
+
+        function startDrag(e) {
+            isDragging = true;
+            e.preventDefault();
+        }
+
+        document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchend', stopDrag);
+        
+        function stopDrag() {
+            isDragging = false;
+            // 손잡이 원위치로
+            joystickHandle.style.transform = `translate(-50%, -50%)`;
+            // ⚠️ 조이스틱 놓았을 때 로봇 정지 신호 전송 (vx=0, wz=0)
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ vx: 0.0, wz: 0.0 }));
+            }
+        }
+
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('touchmove', drag);
+
+        function drag(e) {
+        if (!isDragging) return;
+
+        const clientX = e.clientX || e.touches[0].clientX;
+        const clientY = e.clientY || e.touches[0].clientY;
+
+        const x = clientX - containerRect.left - centerX;
+        const y = clientY - containerRect.top - centerY;
+        const distance = Math.min(Math.sqrt(x * x + y * y), centerX);
+        const angle = Math.atan2(y, x);
+
+        const newX = distance * Math.cos(angle);
+        const newY = distance * Math.sin(angle);
+
+        joystickHandle.style.transform = `translate(${newX - 25}px, ${newY - 25}px)`;
+
+        const vx = - (newY / centerX);
+        const wz = - (newX / centerX);
+
+        // ⚠️ 이 부분을 추가하세요.
+        console.log(`vx: ${vx.toFixed(2)}, wz: ${wz.toFixed(2)}`);
+        
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ vx: vx.toFixed(2), wz: wz.toFixed(2) }));
+        }
+    }
+    </script>
+</body>
+</html>
