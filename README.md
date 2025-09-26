@@ -44,6 +44,6 @@
 - 정인호   안드로이드 ↔ 라즈베리파이 데이터 연동 테스트  
 - 류성원   Raspberry Pi OS 및 Ubuntu 환경 테스트  
 
-    
+
       
 </details>
